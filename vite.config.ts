@@ -13,7 +13,7 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true, // Allow external connections for mobile testing
-    https: false, // Enable if HTTPS is needed for camera access
+    https: true, // Enable HTTPS for camera access on mobile devices
   },
   build: {
     target: 'es2022',
