@@ -7,11 +7,16 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { MediaPipeFaceLandmarker } from '@/lib/mediapipe';
 import { QualityValidator } from '@/lib/quality';
 import { FacialMetricsCalculator } from '@/lib/metrics';
+import { FileUpload } from '@/ui/FileUpload';
+import { processImageFile, ImageProcessingError } from '@/utils/imageProcessing';
 import type { NormalizedLandmark } from '@/types/mediapipe';
 import type { QualityCheckResult } from '@/types/quality';
 import type { FacialFeatures, QualityScores } from '@/types/metrics';
 
+type CaptureMode = 'camera' | 'file';
+
 interface CaptureState {
+  readonly mode: CaptureMode;
   readonly status: 'idle' | 'requesting_camera' | 'camera_active' | 'capturing' | 'processing' | 'complete' | 'error';
   readonly error?: string;
   readonly stream?: MediaStream;
@@ -34,7 +39,7 @@ interface CaptureProps {
 export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [captureState, setCaptureState] = useState<CaptureState>({ status: 'idle' });
+  const [captureState, setCaptureState] = useState<CaptureState>({ mode: 'camera', status: 'idle' });
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize MediaPipe components
@@ -54,7 +59,7 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
         setIsInitialized(true);
       } catch (error) {
         const errorMessage = `Failed to initialize components: ${String(error)}`;
-        setCaptureState({ status: 'error', error: errorMessage });
+        setCaptureState(prev => ({ ...prev, status: 'error', error: errorMessage }));
         onError?.(errorMessage);
       }
     };
@@ -73,12 +78,12 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
   const startCamera = useCallback(async (): Promise<void> => {
     if (!isInitialized) {
       const errorMessage = 'Components not initialized';
-      setCaptureState({ status: 'error', error: errorMessage });
+      setCaptureState(prev => ({ ...prev, status: 'error', error: errorMessage }));
       onError?.(errorMessage);
       return;
     }
 
-    setCaptureState({ status: 'requesting_camera' });
+    setCaptureState(prev => ({ ...prev, status: 'requesting_camera' }));
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -105,7 +110,7 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
           videoRef.current.onerror = () => reject(new Error('Video failed to load'));
         });
 
-        setCaptureState({ status: 'camera_active', stream });
+        setCaptureState(prev => ({ ...prev, status: 'camera_active', stream }));
       }
     } catch (error) {
       let errorMessage = 'Camera access denied or not available';
@@ -120,7 +125,7 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
         }
       }
 
-      setCaptureState({ status: 'error', error: errorMessage });
+      setCaptureState(prev => ({ ...prev, status: 'error', error: errorMessage }));
       onError?.(errorMessage);
     }
   }, [isInitialized, onError]);
@@ -129,51 +134,44 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
     if (captureState.stream !== undefined) {
       captureState.stream.getTracks().forEach(track => track.stop());
     }
-    setCaptureState({ status: 'idle' });
+    setCaptureState(prev => ({ ...prev, status: 'idle' }));
   }, [captureState.stream]);
 
-  const captureImage = useCallback(async (): Promise<void> => {
-    if (!videoRef.current || !canvasRef.current || 
-        captureState.status !== 'camera_active' ||
-        !landmarkerRef.current || !qualityValidatorRef.current || !metricsCalculatorRef.current) {
+  const processImage = useCallback(async (imageElement: HTMLImageElement): Promise<void> => {
+    if (!landmarkerRef.current || !qualityValidatorRef.current || !metricsCalculatorRef.current) {
+      const errorMessage = 'Components not initialized';
+      setCaptureState(prev => ({ ...prev, status: 'error', error: errorMessage }));
+      onError?.(errorMessage);
       return;
     }
 
-    setCaptureState(prev => ({ ...prev, status: 'capturing' }));
+    setCaptureState(prev => ({ ...prev, status: 'processing' }));
 
     try {
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-      
-      if (ctx === null) {
-        throw new Error('Could not get canvas context');
-      }
-
-      // Set canvas size to video dimensions
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      // Draw current video frame to canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      setCaptureState(prev => ({ ...prev, status: 'processing' }));
-
       // Detect landmarks
-      const landmarks = await landmarkerRef.current.detectLandmarks(canvas);
+      const landmarks = await landmarkerRef.current.detectLandmarks(imageElement);
 
       if (landmarks.length === 0) {
         throw new Error('顔が検出されませんでした。顔全体がフレーム内に映るように調整してください。');
       }
 
       // Validate quality
-      const qualityCheck = await qualityValidatorRef.current.validateImage(canvas, landmarks);
+      const qualityCheck = await qualityValidatorRef.current.validateImage(imageElement, landmarks);
 
       // Calculate facial features and scores
       const features = metricsCalculatorRef.current.calculateFacialFeatures(landmarks);
       const scores = metricsCalculatorRef.current.calculateQualityScores(features);
 
-      // Get image data
+      // Create canvas to get image data
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx === null) {
+        throw new Error('Could not get canvas context');
+      }
+
+      canvas.width = imageElement.naturalWidth;
+      canvas.height = imageElement.naturalHeight;
+      ctx.drawImage(imageElement, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
       const result: CaptureResult = {
@@ -192,12 +190,97 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
       setCaptureState(prev => ({ ...prev, status: 'error', error: errorMessage }));
       onError?.(errorMessage);
     }
-  }, [captureState.status, onCapture, onError]);
+  }, [onCapture, onError]);
+
+  const captureImage = useCallback(async (): Promise<void> => {
+    if (!videoRef.current || !canvasRef.current || captureState.status !== 'camera_active') {
+      return;
+    }
+
+    setCaptureState(prev => ({ ...prev, status: 'capturing' }));
+
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+
+      if (ctx === null) {
+        throw new Error('Could not get canvas context');
+      }
+
+      // Set canvas size to video dimensions
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      // Draw current video frame to canvas
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Create image element from canvas for processing
+      const imageElement = new Image();
+      imageElement.onload = () => {
+        void processImage(imageElement);
+      };
+      imageElement.src = canvas.toDataURL('image/jpeg', 0.9);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '画像の処理中にエラーが発生しました';
+      setCaptureState(prev => ({ ...prev, status: 'error', error: errorMessage }));
+      onError?.(errorMessage);
+    }
+  }, [captureState.status, processImage]);
+
+  const handleFileSelected = useCallback(async (file: File): Promise<void> => {
+    setCaptureState(prev => ({ ...prev, status: 'processing' }));
+
+    try {
+      // Process uploaded file (EXIF correction and resize)
+      const result = await processImageFile(file, { maxWidth: 1280, maxHeight: 1280 });
+
+      // Process the corrected image
+      await processImage(result.image);
+
+    } catch (error) {
+      let errorMessage = '画像ファイルの処理中にエラーが発生しました';
+
+      if (error instanceof ImageProcessingError) {
+        switch (error.code) {
+          case 'LOAD_FAILED':
+            errorMessage = '画像ファイルの読み込みに失敗しました。ファイルが破損していないか確認してください。';
+            break;
+          case 'INVALID_FILE':
+            errorMessage = '無効な画像ファイルです。JPEG、PNG、WebP形式をご使用ください。';
+            break;
+          case 'PROCESSING_FAILED':
+            errorMessage = '画像の処理に失敗しました。別の画像をお試しください。';
+            break;
+          default:
+            errorMessage = error.message;
+        }
+      }
+
+      setCaptureState(prev => ({ ...prev, status: 'error', error: errorMessage }));
+      onError?.(errorMessage);
+    }
+  }, [processImage, onError]);
+
+  const handleFileError = useCallback((error: string): void => {
+    setCaptureState(prev => ({ ...prev, status: 'error', error }));
+    onError?.(error);
+  }, [onError]);
+
+  const handleModeSwitch = useCallback((newMode: CaptureMode): void => {
+    // Stop camera if switching away from camera mode
+    if (captureState.mode === 'camera' && captureState.stream) {
+      captureState.stream.getTracks().forEach(track => track.stop());
+    }
+
+    setCaptureState({ mode: newMode, status: 'idle' });
+  }, [captureState.mode, captureState.stream]);
 
   const getStatusText = (): string => {
     switch (captureState.status) {
       case 'idle':
-        return 'カメラを開始';
+        return captureState.mode === 'camera' ? 'カメラを開始' : 'ファイルを選択';
       case 'requesting_camera':
         return 'カメラアクセス中...';
       case 'camera_active':
@@ -218,7 +301,50 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
 
   return (
     <div className={`capture-container ${className}`}>
-      <div className="capture-video-container">
+      {/* Mode Selection */}
+      <div className="mode-selector" style={{
+        display: 'flex',
+        gap: '8px',
+        marginBottom: '20px',
+        justifyContent: 'center',
+      }}>
+        <button
+          onClick={() => handleModeSwitch('camera')}
+          disabled={isLoading}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: captureState.mode === 'camera' ? '#2196f3' : '#f5f5f5',
+            color: captureState.mode === 'camera' ? 'white' : '#666',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: isLoading ? 'not-allowed' : 'pointer',
+            fontSize: '14px',
+            fontWeight: captureState.mode === 'camera' ? 'bold' : 'normal',
+          }}
+        >
+          📷 カメラ撮影
+        </button>
+        <button
+          onClick={() => handleModeSwitch('file')}
+          disabled={isLoading}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: captureState.mode === 'file' ? '#2196f3' : '#f5f5f5',
+            color: captureState.mode === 'file' ? 'white' : '#666',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: isLoading ? 'not-allowed' : 'pointer',
+            fontSize: '14px',
+            fontWeight: captureState.mode === 'file' ? 'bold' : 'normal',
+          }}
+        >
+          📁 ファイル選択
+        </button>
+      </div>
+
+      {/* Camera Mode */}
+      {captureState.mode === 'camera' && (
+        <div className="capture-video-container">
         <video
           ref={videoRef}
           className="capture-video"
@@ -273,7 +399,7 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
               {captureState.error}
             </div>
             <button
-              onClick={() => setCaptureState({ status: 'idle' })}
+              onClick={() => setCaptureState(prev => ({ ...prev, status: 'idle' }))}
               style={{
                 padding: '8px 16px',
                 backgroundColor: '#1976d2',
@@ -287,15 +413,42 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
             </button>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
-      <div className="capture-controls" style={{
-        marginTop: '20px',
-        display: 'flex',
-        gap: '12px',
-        justifyContent: 'center',
-        flexWrap: 'wrap',
-      }}>
+      {/* File Upload Mode */}
+      {captureState.mode === 'file' && (
+        <div className="file-upload-section">
+          {captureState.status === 'error' && (
+            <div style={{
+              backgroundColor: '#ffebee',
+              color: '#c62828',
+              padding: '15px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              textAlign: 'center'
+            }}>
+              エラー: {captureState.error}
+            </div>
+          )}
+
+          <FileUpload
+            onFileSelected={handleFileSelected}
+            onError={handleFileError}
+            disabled={isLoading}
+          />
+        </div>
+      )}
+
+      {/* Camera Controls */}
+      {captureState.mode === 'camera' && (
+        <div className="capture-controls" style={{
+          marginTop: '20px',
+          display: 'flex',
+          gap: '12px',
+          justifyContent: 'center',
+          flexWrap: 'wrap',
+        }}>
         {captureState.status === 'idle' && (
           <button
             onClick={startCamera}
@@ -371,7 +524,32 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
             {getStatusText()}
           </div>
         )}
-      </div>
+        </div>
+      )}
+
+      {/* Processing Status */}
+      {isLoading && (
+        <div style={{
+          marginTop: '20px',
+          padding: '12px 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          fontSize: '14px',
+          color: '#666',
+        }}>
+          <div className="loading-spinner" style={{
+            width: '16px',
+            height: '16px',
+            border: '2px solid #ddd',
+            borderTop: '2px solid #2196f3',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+          }} />
+          {getStatusText()}
+        </div>
+      )}
 
       <style>
         {`
@@ -395,12 +573,22 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
             .capture-container {
               padding: 10px;
             }
-            
+
+            .mode-selector {
+              flex-direction: column;
+              align-items: center;
+            }
+
+            .mode-selector button {
+              width: 100%;
+              max-width: 200px;
+            }
+
             .capture-controls {
               flex-direction: column;
               align-items: center;
             }
-            
+
             .capture-controls button {
               width: 100%;
               max-width: 300px;
