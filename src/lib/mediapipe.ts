@@ -51,8 +51,10 @@ export class MediaPipeFaceLandmarker {
 
   private async doInitialize(): Promise<void> {
     try {
-      // Dynamic import to handle MediaPipe loading
-      const { FaceLandmarker, FilesetResolver } = await import('@mediapipe/tasks-vision');
+      // Dynamic import to handle MediaPipe loading - types will be resolved at runtime
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mediaPipeModule = await import('@mediapipe/tasks-vision' as any);
+      const { FaceLandmarker, FilesetResolver } = mediaPipeModule;
 
       const vision = await FilesetResolver.forVisionTasks(
         this.options.wasmLoaderScript ?? 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
@@ -92,6 +94,7 @@ export class MediaPipeFaceLandmarker {
 
     try {
       // Type assertion needed due to dynamic import
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = (this.faceLandmarker as any).detect(imageElement) as FaceLandmarkerResult;
       
       if (result.faceLandmarks.length === 0) {
@@ -117,7 +120,9 @@ export class MediaPipeFaceLandmarker {
   }
 
   dispose(): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (this.faceLandmarker !== null && 'close' in (this.faceLandmarker as any)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (this.faceLandmarker as any).close();
     }
     this.faceLandmarker = null;

@@ -3,7 +3,7 @@
  * Provides mobile-optimized camera interface for facial image capture
  */
 
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { MediaPipeFaceLandmarker } from '@/lib/mediapipe';
 import { QualityValidator } from '@/lib/quality';
 import { FacialMetricsCalculator } from '@/lib/metrics';
@@ -31,21 +31,21 @@ interface CaptureProps {
   readonly className?: string;
 }
 
-export function Capture({ onCapture, onError, className = '' }: CaptureProps): JSX.Element {
+export function Capture({ onCapture, onError, className = '' }: CaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [captureState, setCaptureState] = useState<CaptureState>({ status: 'idle' });
   const [isInitialized, setIsInitialized] = useState(false);
 
   // Initialize MediaPipe components
-  const landmarkerRef = useRef<MediaPipeFaceLandmarker>();
-  const qualityValidatorRef = useRef<QualityValidator>();
-  const metricsCalculatorRef = useRef<FacialMetricsCalculator>();
+  const landmarkerRef = useRef<MediaPipeFaceLandmarker | undefined>(undefined);
+  const qualityValidatorRef = useRef<QualityValidator | undefined>(undefined);
+  const metricsCalculatorRef = useRef<FacialMetricsCalculator | undefined>(undefined);
 
   useEffect(() => {
     const initializeComponents = async (): Promise<void> => {
       try {
-        landmarkerRef.current = new MediaPipeFaceLandmarker();
+        landmarkerRef.current = new MediaPipeFaceLandmarker({});
         await landmarkerRef.current.initialize();
         
         qualityValidatorRef.current = new QualityValidator();
@@ -68,7 +68,7 @@ export function Capture({ onCapture, onError, className = '' }: CaptureProps): J
         captureState.stream.getTracks().forEach(track => track.stop());
       }
     };
-  }, []);
+  }, [captureState.stream, onError]);
 
   const startCamera = useCallback(async (): Promise<void> => {
     if (!isInitialized) {

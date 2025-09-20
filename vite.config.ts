@@ -1,6 +1,6 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { resolve } from 'path'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -8,33 +8,34 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
-      '@/lib': resolve(__dirname, './src/lib'),
-      '@/ui': resolve(__dirname, './src/ui'),
-      '@/types': resolve(__dirname, './src/types')
-    }
+    },
   },
   server: {
-    host: true,
     port: 3000,
-    // MediaPipe WASMファイルのためのCORS設定
-    headers: {
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Opener-Policy': 'same-origin'
-    }
+    host: true, // Allow external connections for mobile testing
+    https: false, // Enable if HTTPS is needed for camera access
   },
   build: {
-    // PWAのための最適化
+    target: 'es2022',
+    sourcemap: true,
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['react', 'react-dom'],
-          mediapipe: ['@mediapipe/face_landmarker']
-        }
-      }
-    }
+          'mediapipe': ['@mediapipe/tasks-vision'],
+          'react-vendor': ['react', 'react-dom'],
+        },
+      },
+    },
   },
-  // MediaPipe WASMを使用するための設定
   optimizeDeps: {
-    exclude: ['@mediapipe/face_landmarker']
-  }
-})
+    include: ['@mediapipe/tasks-vision'],
+    exclude: [],
+  },
+  // CORS and security headers for MediaPipe WASM
+  define: {
+    global: 'globalThis',
+  },
+  worker: {
+    format: 'es',
+  },
+});

@@ -2,7 +2,7 @@
  * Image and facial detection quality validation types
  */
 
-import type { NormalizedLandmark } from '@/types/mediapipe';
+// NormalizedLandmark import removed - not used in this type definition file
 
 export interface QualityCheckResult {
   readonly isValid: boolean;

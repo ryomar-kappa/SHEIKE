@@ -23,7 +23,7 @@ import {
 } from '@/lib/mediapipe';
 
 // Golden ratio and ideal proportions based on facial analysis research
-const GOLDEN_RATIO = 1.618;
+// const GOLDEN_RATIO = 1.618; // Reserved for future golden ratio calculations
 
 const DEFAULT_BASELINE_RANGES: BaselineRanges = {
   eyes: {
@@ -282,10 +282,10 @@ export class FacialMetricsCalculator {
 
   private calculateCentroid(landmarks: readonly NormalizedLandmark[]): NormalizedLandmark {
     const sum = landmarks.reduce(
-      (acc, landmark) => ({
+(acc, landmark) => ({
         x: acc.x + landmark.x,
         y: acc.y + landmark.y,
-        z: acc.z + (landmark.z ?? 0),
+        z: (acc.z ?? 0) + (landmark.z ?? 0),
       }),
       { x: 0, y: 0, z: 0 }
     );
@@ -293,7 +293,7 @@ export class FacialMetricsCalculator {
     return {
       x: sum.x / landmarks.length,
       y: sum.y / landmarks.length,
-      z: sum.z / landmarks.length,
+      z: (sum.z ?? 0) / landmarks.length,
     };
   }
 

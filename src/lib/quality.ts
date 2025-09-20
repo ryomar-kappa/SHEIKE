@@ -7,13 +7,12 @@ import type { NormalizedLandmark } from '@/types/mediapipe';
 import type {
   QualityCheckResult,
   QualityIssue,
-  QualityIssueType,
   QualityThresholds,
   ImageQualityMetrics,
   FaceQualityMetrics,
   QualityValidationError,
 } from '@/types/quality';
-import { LANDMARK_INDICES, extractLandmarksByIndices, calculateAngle } from '@/lib/mediapipe';
+import { LANDMARK_INDICES, extractLandmarksByIndices } from '@/lib/mediapipe';
 
 const DEFAULT_QUALITY_THRESHOLDS: QualityThresholds = {
   faceAngle: {
@@ -247,9 +246,9 @@ export class QualityValidator {
 
     // Calculate face size and position
     const boundingBox = this.calculateFaceBoundingBox(landmarks);
-    const faceWidth = boundingBox.width * imageWidth;
-    const faceHeight = boundingBox.height * imageHeight;
-    const faceArea = faceWidth * faceHeight;
+    const _faceWidth = boundingBox.width * imageWidth;
+    const _faceHeight = boundingBox.height * imageHeight;
+    const faceArea = _faceWidth * _faceHeight;
 
     const centerX = (boundingBox.left + boundingBox.width / 2) * imageWidth;
     const centerY = (boundingBox.top + boundingBox.height / 2) * imageHeight;
@@ -268,8 +267,8 @@ export class QualityValidator {
     return {
       angle: angles,
       size: {
-        width: faceWidth / imageWidth,
-        height: faceHeight / imageHeight,
+        width: _faceWidth / imageWidth,
+        height: _faceHeight / imageHeight,
         area: faceArea / (imageWidth * imageHeight),
       },
       position: {
@@ -297,12 +296,11 @@ export class QualityValidator {
     const roll = Math.atan2(rightPoint.y - leftPoint.y, rightPoint.x - leftPoint.x) * (180 / Math.PI);
 
     // Yaw: rotation around y-axis (left/right turn)
-    const faceWidth = Math.abs(rightPoint.x - leftPoint.x);
+    // Calculate face dimensions for angle estimation
     const centerX = (leftPoint.x + rightPoint.x) / 2;
     const yaw = (centerX - 0.5) * 60; // Approximate yaw from face position
 
     // Pitch: rotation around x-axis (up/down tilt)
-    const faceHeight = Math.abs(bottomPoint.y - topPoint.y);
     const centerY = (topPoint.y + bottomPoint.y) / 2;
     const pitch = (centerY - 0.5) * 40; // Approximate pitch from face position
 

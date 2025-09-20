@@ -3,7 +3,7 @@
  * Displays facial landmarks, quality metrics, and analysis results
  */
 
-import React, { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { NormalizedLandmark } from '@/types/mediapipe';
 import type { QualityCheckResult } from '@/types/quality';
 import type { FacialFeatures, QualityScores } from '@/types/metrics';
@@ -27,7 +27,7 @@ export function DebugOverlay({
   features,
   scores,
   className = '',
-}: DebugOverlayProps): JSX.Element {
+}: DebugOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mode, setMode] = useState<VisualizationMode>('landmarks');
   const [showDetails, setShowDetails] = useState(false);
@@ -53,7 +53,7 @@ export function DebugOverlay({
         break;
       case 'features':
         if (features) {
-          drawFeatureOverlays(ctx, features, imageData.width, imageData.height);
+          drawFeatureOverlays(ctx, features);
         }
         break;
       case 'quality':
@@ -67,6 +67,7 @@ export function DebugOverlay({
         }
         break;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [imageData, landmarks, qualityCheck, features, scores, mode]);
 
   const drawLandmarks = (
@@ -131,7 +132,7 @@ export function DebugOverlay({
       ctx.stroke();
 
       // Draw label
-      const firstLandmark = landmarks[indices[0]];
+      const firstLandmark = landmarks[indices[0] ?? 0];
       if (firstLandmark) {
         ctx.fillStyle = color;
         ctx.font = 'bold 12px Arial';
@@ -148,8 +149,8 @@ export function DebugOverlay({
   const drawFeatureOverlays = (
     ctx: CanvasRenderingContext2D,
     features: FacialFeatures,
-    width: number,
-    height: number
+    // _width: number,
+    // _height: number
   ): void => {
     ctx.font = '14px Arial';
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
@@ -304,7 +305,7 @@ export function DebugOverlay({
 
   const drawMetricsOverlays = (
     ctx: CanvasRenderingContext2D,
-    features: FacialFeatures,
+    _features: FacialFeatures,
     scores: QualityScores,
     width: number,
     height: number
